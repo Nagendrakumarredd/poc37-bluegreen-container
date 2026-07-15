@@ -1,0 +1,60 @@
+trigger: none
+
+parameters:
+- name: imageTag
+  displayName: Select Version
+  type: string
+  default: blue
+  values:
+  - blue
+  - green
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  acrName: 'poc37acr12345'
+  imageName: 'poc37-app'
+
+stages:
+
+- stage: BuildPush
+  jobs:
+  - job: Build
+    steps:
+
+    - task: Docker@2
+      displayName: Build and Push
+      inputs:
+        containerRegistry: 'ACR-Service-Connection'
+        repository: '$(imageName)'
+        command: 'buildAndPush'
+        Dockerfile: '$(Build.SourcesDirectory)/${{ parameters.imageTag }}/Dockerfile'
+        buildContext: '$(Build.SourcesDirectory)/${{ parameters.imageTag }}'
+        tags: |
+          ${{ parameters.imageTag }}
+
+- stage: Deploy
+  dependsOn: BuildPush
+
+  jobs:
+  - job: DeployApp
+
+    steps:
+
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: 'Azure-Service-Connection'
+        scriptType: bash
+        scriptLocation: inlineScript
+
+        inlineScript: |
+
+          az webapp config container set \
+          --resource-group poc37-rg \
+          --name poc37-app-unique \
+          --docker-custom-image-name $(acrName).azurecr.io/$(imageName):${{ parameters.imageTag }}
+
+          az webapp restart \
+          --resource-group poc37-rg \
+          --name poc37-app-unique
